@@ -55,7 +55,7 @@ struct Config {
     timeout: i64,
 }
 
-fn handle_connection(mut client_conn: TcpStream, config: Arc<Config>) -> Result<(), Error> {
+fn handle_connection(mut client_conn: TcpStream, config: &Box<Config>) -> Result<(), Error> {
     let peer = match client_conn.peer_addr() {
         Ok(a) => format!("{}", a),
         Err(_) => "<unknown>".to_string(),
@@ -105,7 +105,7 @@ fn main() {
     logger::init_logger_config(&matches);
 
     let config = match make_config(&matches) {
-        Some(c) => Arc::new(c),
+        Some(c) => c,
         None => return,
     };
 
@@ -120,7 +120,7 @@ fn main() {
     info!("Starting proxy server on {:?}", listener.local_addr().unwrap());
 
     for stream in listener.incoming() {
-        let c = config.clone();
+        let c = &config;
         let conn = match stream {
             Ok(c) => c,
             Err(e) => {
@@ -135,7 +135,7 @@ fn main() {
     }
 }
 
-fn make_config(matches: &ArgMatches) -> Option<Config> {
+fn make_config(matches: &ArgMatches) -> Option<Box<Config>> {
     macro_rules! extract_addr {
         ($arg: ident) => ({
             let arg_name = stringify!($arg);
@@ -202,16 +202,18 @@ fn make_config(matches: &ArgMatches) -> Option<Config> {
         None => return None,
     };
 
-    Some(Config {
+    Some(Box::new(Config {
         listen_addr: listen_addr,
         upstream_addr: upstream_addr,
         upstream_hostname: upstream_hostname,
         identity: identity,
         timeout: timeout,
-    })
+    }))
 }
 
 fn find_identity_by_name(name: &str) -> Option<SecIdentity> {
+    debug!("Finding identity '{}'", name);
+
     let items = ItemSearchOptions::new()
         .class(ItemClass::Identity)
         .load_refs(true)
@@ -224,7 +226,7 @@ fn find_identity_by_name(name: &str) -> Option<SecIdentity> {
         },
     };
 
-    let result = match items.first() {
+    let result = match items.into_iter().next() {
         Some(r) => r,
         None => return None,
     };
